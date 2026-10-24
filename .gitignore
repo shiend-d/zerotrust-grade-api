@@ -8,3 +8,4 @@ demo-run.md
 !.env.example
 result
 npm-debug.log*
+*.pdf

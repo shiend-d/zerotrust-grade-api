@@ -3,8 +3,11 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { config } from './config.js';
 
 export const db = new DatabaseSync(config.databasePath);
-db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
-db.exec(`
+db.exec('PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
+
+if (process.env.ZERO_TRUST_DB_READY !== '1') {
+  db.exec('PRAGMA journal_mode = WAL;');
+  db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL, nama TEXT NOT NULL, role TEXT NOT NULL,
@@ -36,7 +39,8 @@ db.exec(`
     role TEXT NOT NULL, endpoint TEXT NOT NULL, device_id TEXT NOT NULL,
     hasil TEXT NOT NULL CHECK (hasil IN ('ALLOW', 'DENY')), alasan TEXT NOT NULL
   );
-`);
+  `);
+}
 
 export function hashPassword(password) {
   return createHash('sha256').update(password).digest('hex');
@@ -81,4 +85,4 @@ export function writeAudit({ subject = 'anonymous', role = 'none', endpoint, dev
   console.log(`[AUDIT] ${result} ${subject} (${role}) ${endpoint} device=${deviceId} reason="${reason}"`);
 }
 
-seedDatabase();
+if (process.env.ZERO_TRUST_DB_READY !== '1') seedDatabase();

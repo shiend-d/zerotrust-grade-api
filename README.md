@@ -1,25 +1,42 @@
-# Zero Trust Sistem Nilai
+# Zero Trust Grade API
 
-API Sistem Nilai dan Transkrip untuk tugas praktikum Zero Trust Security. Gateway bertindak sebagai PEP, Policy Engine memeriksa identitas dan konteks, dan kedua service memverifikasi kembali gateway secret serta JWT.
+A local API for academic grade and transcript management based on a Zero Trust model. Every user request is evaluated by the API Gateway, then the downstream services verify the gateway secret and JWT again before processing it.
 
-## Persyaratan
+## System overview
 
-- Node.js 24 (menggunakan `node:sqlite` dan `fetch` bawaan)
+- **API Gateway (PEP)** receives requests, validates tokens and devices, enforces access policies, and writes decisions to the audit log.
+- **Policy Engine** in `policy.js` checks roles, class or transcript ownership, finalization status, and access hours.
+- **Grade Service** handles grade retrieval, grade changes, and class finalization.
+- **Transcript Service** handles transcript retrieval and synchronization.
+- **SQLite** stores accounts, classes, grades, refresh tokens, transcripts, and audit logs in `kampus.db`.
+
+Application requests are sent through the Gateway on port `3000`. The Grade Service and Transcript Service run on ports `3001` and `3002`; both reject direct access without a valid gateway secret and JWT.
+
+## Requirements
+
+- Node.js 24 or newer (uses built-in `node:sqlite` and `fetch`)
 - npm
-- `curl` dan `jq` untuk menjalankan demo
+- `curl` and `jq` for the demo
+- Nix is only required when using the provided development shell
 
-## Menjalankan
+## Run locally
 
 ```bash
 npm install
 npm start
 ```
 
-Gateway tersedia di `http://localhost:3000`, Service Nilai di port `3001`, dan Service Transkrip di port `3002`. Gateway menyediakan `GET /health`. Database bersama `kampus.db` dibuat dan diisi seed saat proses mulai. Untuk menghentikan seluruh server, tekan Ctrl+C.
+All three servers will start together. Check the Gateway with:
 
-## Menjalankan lewat Nix
+```bash
+curl -i http://localhost:3000/health
+```
 
-Flake menyediakan dev shell dengan Node.js 24, `curl`, dan `jq`. Dari folder proyek:
+The database is created and seeded automatically. Press `Ctrl+C` to stop all servers.
+
+### Run with Nix
+
+The development shell provides Node.js 24, `curl`, and `jq` without changing the system NixOS configuration:
 
 ```bash
 nix develop
@@ -27,58 +44,92 @@ npm install
 npm start
 ```
 
-Perintah `nix develop` masuk ke lingkungan proyek tanpa mengubah konfigurasi NixOS sistem. Dependency npm cukup dipasang sekali. Jalankan demo dari terminal interaktif:
+## Demo
+
+Run the demo from an interactive terminal:
 
 ```bash
 npm run demo
 ```
 
-Demo menampilkan nomor langkah, endpoint, status HTTP aktual, dan body JSON yang diformat. Tekan Enter untuk menjalankan request berikutnya; token ditampilkan sesuai response API. Laporan Markdown dibuat di `demo-run.md` di folder proyek dan diperbarui setiap kali demo dijalankan. Untuk memilih lokasi laporan sendiri, gunakan `env DEMO_LOG=nama-file.md npm run demo`. Untuk menjalankan semua langkah tanpa jeda:
+The demo covers authentication and device verification, Gateway checks, grade policies, finalization and transcript synchronization, ownership restrictions, and audit logs. Each step prints the endpoint, actual HTTP status, and response body. Press Enter to run the next step. The results are also saved to `demo-run.md` in the project folder.
+
+To run every step without pausing:
 
 ```bash
 npm run demo -- --auto
 ```
 
-`demo.sh` menyalakan server dengan database sementara bila gateway belum hidup, lalu menghentikan server setelah demo. Bila gateway sudah berjalan, skrip menggunakan server dan database tersebut tanpa menghentikannya. Untuk video, sebaiknya gunakan database demo baru agar Kelas 1 belum terfinalisasi. `flake.lock` mengunci revisi nixpkgs supaya lingkungan Nix dapat direproduksi.
+If the Gateway is not running, `demo.sh` starts the servers with a temporary database and stops them after the demo. If the Gateway is already running, the demo uses the existing server and database; the finalization scenario can modify data in that database.
 
-## Akun seed
+## Seed accounts and data
 
-| Username | Password | Role | NIM | Device ID |
-|---|---|---|---|---|
+| Username | Password | Role | Student ID | Device ID |
+| --- | --- | --- | --- | --- |
 | `admin` | `admin123` | admin | — | `dev-admin-01` |
-| `dosen1` | `dosen123` | dosen | — | `dev-dosen-01` |
-| `dosen2` | `dosen123` | dosen | — | `dev-dosen-02` |
-| `mhs1` | `mhs123` | mahasiswa | `237006001` | `dev-mhs-01` |
-| `mhs2` | `mhs123` | mahasiswa | `237006002` | `dev-mhs-02` |
-| `mhs3` | `mhs123` | mahasiswa | `237006003` | `dev-mhs-03` |
+| `dosen1` | `dosen123` | lecturer | — | `dev-dosen-01` |
+| `dosen2` | `dosen123` | lecturer | — | `dev-dosen-02` |
+| `mhs1` | `mhs123` | student | `237006001` | `dev-mhs-01` |
+| `mhs2` | `mhs123` | student | `237006002` | `dev-mhs-02` |
+| `mhs3` | `mhs123` | student | `237006003` | `dev-mhs-03` |
 
-Password seed disimpan sebagai SHA-256 hash. Data kelas awal: `KP70065004` Keamanan Informasi (dosen1) dan `KP70065009` Keamanan Jaringan (dosen2). Database tidak otomatis direset saat restart; hapus `kampus.db` sebelum menjalankan aplikasi bila ingin mengulang demo dari seed awal.
+Passwords are stored as SHA-256 hashes. The initial data includes `KP70065004` Information Security, taught by dosen1, and `KP70065009` Network Security, taught by dosen2. An existing database is not reset when the servers restart.
 
-## Endpoint
+To start again with the initial data, stop the servers and delete the database plus any SQLite companion files:
 
-Semua endpoint aplikasi diakses melalui gateway.
+```bash
+rm -f kampus.db kampus.db-wal kampus.db-shm
+npm start
+```
 
-| Method dan path | Fungsi |
-|---|---|
-| `POST /auth/login` | Login dengan `{ "username", "password" }` dan header `X-Device-ID` |
-| `POST /auth/refresh` | Perbarui access token dengan `{ "refresh_token" }` dan device terdaftar |
-| `POST /auth/logout` | Cabut refresh token dengan `{ "refresh_token" }` |
-| `POST /auth/service` | Terbitkan token service dengan `{ "client_id", "client_secret" }` |
-| `GET /nilai` | Lihat nilai sesuai role dan kepemilikan |
-| `PUT /nilai/:id` | Ubah nilai dengan `{ "nilai_angka", "nilai_huruf" }` |
-| `POST /kelas/:id/finalisasi` | Finalisasi kelas dan sinkronkan transkrip |
-| `GET /transkrip/:nim` | Lihat transkrip sesuai role dan kepemilikan |
-| `POST /transkrip/sinkron` | Endpoint internal yang hanya menerima token service |
-| `GET /audit-logs` | Lihat log keputusan; khusus admin terautentikasi |
+## API
 
-Access token berlaku 10 menit, refresh token tersimpan selama 1 hari, dan token service berlaku 5 menit. Request user non-auth menyertakan `Authorization: Bearer <token>` dan `X-Device-ID`. Service menolak request tanpa `X-Gateway-Secret` valid dan JWT valid.
+The following application endpoints are accessed through the API Gateway. Endpoints other than login require an access token and, for user requests, the `X-Device-ID` header.
 
-## Jam akses
+| Method and path | Purpose |
+| --- | --- |
+| `GET /health` | Gateway health check |
+| `POST /auth/login` | Sign in with a username, password, and `X-Device-ID` |
+| `POST /auth/refresh` | Issue a new access token from a refresh token |
+| `POST /auth/logout` | Revoke a refresh token |
+| `POST /auth/service` | Issue a token for an internal service |
+| `GET /nilai` | View grades according to role and ownership |
+| `PUT /nilai/:id` | Update a grade by its lecturer before finalization |
+| `POST /kelas/:id/finalisasi` | Finalize a class and trigger transcript synchronization |
+| `GET /transkrip/:nim` | Students view their own transcript; admins may view transcripts |
+| `POST /transkrip/sinkron` | Internal synchronization endpoint using a service token |
+| `GET /audit-logs` | View audit logs; admin only |
 
-Perubahan dan finalisasi nilai diizinkan mulai pukul 07.00 hingga sebelum 21.00. Rentang dapat diatur melalui `ACCESS_START_HOUR` dan `ACCESS_END_HOUR`. Header opsional `X-Simulated-Hour` dipakai skrip demo untuk mensimulasikan jam; fasilitas ini ditujukan untuk demonstrasi lokal.
+Access tokens are valid for 10 minutes, refresh tokens for one day, and service tokens for 5 minutes. Grade updates and finalization are allowed from 07:00 until before 21:00. The demo uses the `X-Simulated-Hour` header to demonstrate the time policy without waiting for a specific time.
 
-Konfigurasi dapat diubah lewat environment variable: `GATEWAY_PORT`, `NILAI_PORT`, `TRANSKRIP_PORT`, `JWT_SECRET`, `GATEWAY_SECRET`, `SERVICE_CLIENT_ID`, `SERVICE_CLIENT_SECRET`, `ACCESS_START_HOUR`, `ACCESS_END_HOUR`, dan `DATABASE_PATH`. Default secret hanya untuk demo lokal; ganti sebelum penggunaan di luar lingkungan demo.
+## Configuration
 
-## Alur demo video
+Configuration is read from environment variables when the processes start.
 
-Skrip interaktif `demo.sh` menunjukkan penolakan login dari device tak terdaftar, refresh dan logout, verifikasi service, pembatasan nilai dan transkrip, kebijakan jam akses, finalisasi, sinkronisasi dengan token service, dan audit log. Implementasi gateway dan aturan akses ada di `gateway.js` serta `policy.js`; pemeriksaan ulang dan operasi data ada di `service-nilai.js` dan `service-transkrip.js`.
+| Variable | Default | Description |
+| --- | --- | --- |
+| `GATEWAY_PORT` | `3000` | API Gateway port |
+| `NILAI_PORT` | `3001` | Grade Service port |
+| `TRANSKRIP_PORT` | `3002` | Transcript Service port |
+| `DATABASE_PATH` | `kampus.db` in the project folder | SQLite database location |
+| `JWT_SECRET` | demo value in `config.js` | Token signing key |
+| `GATEWAY_SECRET` | demo value in `config.js` | Internal secret between the Gateway and services |
+| `SERVICE_CLIENT_ID` | `service-nilai` | Internal service identity |
+| `SERVICE_CLIENT_SECRET` | demo value in `config.js` | Credential for requesting a service token |
+| `ACCESS_START_HOUR` | `7` | Start of the access window, 24-hour format |
+| `ACCESS_END_HOUR` | `21` | End of the access window, exclusive |
+
+> The default secrets and seed accounts are for local demonstration only. Set your own secrets before using this project in another environment.
+
+## Main files
+
+| File | Purpose |
+| --- | --- |
+| `gateway.js` | API Gateway, authentication, request forwarding, and audit logging |
+| `policy.js` | Access policy evaluation |
+| `service-nilai.js` | Grade and class finalization endpoints |
+| `service-transkrip.js` | Transcript and internal synchronization endpoints |
+| `db.js` | SQLite schema, seed data, password hashing, and audit logging |
+| `start-all.js` | Starts and manages all three services |
+| `demo.sh` | Runs the demo scenarios using `curl` |
+| `flake.nix` | Nix development shell for Node.js and demo utilities |
