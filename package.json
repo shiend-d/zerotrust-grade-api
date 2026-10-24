@@ -1,0 +1,18 @@
+{
+  "name": "zero-trust-nilai",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Sistem nilai dan transkrip dengan API Gateway Zero Trust untuk tugas praktikum.",
+  "scripts": {
+    "start": "node start-all.js",
+    "gateway": "node gateway.js",
+    "nilai": "node service-nilai.js",
+    "transkrip": "node service-transkrip.js",
+    "demo": "bash demo.sh"
+  },
+  "dependencies": {
+    "express": "4.22.3",
+    "jsonwebtoken": "9.0.2"
+  }
+}
