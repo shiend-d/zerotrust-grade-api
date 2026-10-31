@@ -84,6 +84,8 @@ export function seedDatabase() {
   addGrade.run(2, 1, '237006002', 78, 'B');
   addGrade.run(3, 2, '237006001', 80, 'A-');
   addGrade.run(4, 2, '237006003', 88, 'A');
+  addGrade.run(5, 1, '237006003', 82, 'A-');
+  addGrade.run(6, 2, '237006002', 84, 'A-');
 }
 
 export function writeAudit({ subject = 'anonymous', role = 'none', endpoint, deviceId = 'none', result, reason }) {

@@ -3,6 +3,7 @@ set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:${GATEWAY_PORT:-3000}}"
 NILAI_URL="${NILAI_URL:-http://127.0.0.1:${NILAI_PORT:-3001}}"
+TRANSKRIP_URL="${TRANSKRIP_URL:-http://127.0.0.1:${TRANSKRIP_PORT:-3002}}"
 GATEWAY_SECRET_VALUE="${GATEWAY_SECRET:-pep-gateway-internal-secret-2026}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 INTERACTIVE=0
@@ -97,7 +98,7 @@ request() {
   if [[ "$endpoint" == "/audit-logs" ]]; then
     printf '%s\n' '```text' >> "$DEMO_LOG"
     printf 'id\tsubjek\tendpoint\thasil\talasan\n' | tee -a "$DEMO_LOG"
-    jq -r '.logs[-28:][] | [.id, .subjek, .endpoint, .hasil, .alasan] | @tsv' "$RESPONSE_FILE" | tee -a "$DEMO_LOG"
+    jq -r '.logs[-100:][] | [.id, .subjek, .endpoint, .hasil, .alasan] | @tsv' "$RESPONSE_FILE" | tee -a "$DEMO_LOG"
   else
     printf '%s\n' '```json' >> "$DEMO_LOG"
     jq 'if .access_token then .access_token = (.access_token[0:25] + "...") else . end
@@ -116,6 +117,9 @@ login() {
 }
 
 say '## Skenario 1: autentikasi, verifikasi device, refresh, dan logout'
+request 'Login dengan password salah.' -X POST "$BASE_URL/auth/login" \
+  -H 'X-Device-ID: dev-dosen-01' -H 'Content-Type: application/json' \
+  -d '{"username":"dosen1","password":"password-salah"}'
 request 'Login device tidak terdaftar.' -X POST "$BASE_URL/auth/login" \
   -H 'X-Device-ID: dev-wrong' -H 'Content-Type: application/json' \
   -d '{"username":"dosen1","password":"dosen123"}'
@@ -124,6 +128,14 @@ request 'Login dosen1 dengan device terdaftar untuk memperoleh access dan refres
   -d '{"username":"dosen1","password":"dosen123"}'
 refresh_token=$(sed -n '/^{/,$p' "$RESPONSE_FILE" | jq -r '.refresh_token')
 request 'Kirim refresh token untuk meminta access token baru.' -X POST "$BASE_URL/auth/refresh" -H 'X-Device-ID: dev-dosen-01' \
+  -H 'Content-Type: application/json' -d "{\"refresh_token\":\"$refresh_token\"}"
+request 'Refresh token dengan device yang salah.' -X POST "$BASE_URL/auth/refresh" -H 'X-Device-ID: dev-wrong' \
+  -H 'Content-Type: application/json' -d "{\"refresh_token\":\"$refresh_token\"}"
+request 'Refresh token tanpa device.' -X POST "$BASE_URL/auth/refresh" \
+  -H 'Content-Type: application/json' -d "{\"refresh_token\":\"$refresh_token\"}"
+request 'Logout dengan device yang salah.' -X POST "$BASE_URL/auth/logout" -H 'X-Device-ID: dev-wrong' \
+  -H 'Content-Type: application/json' -d "{\"refresh_token\":\"$refresh_token\"}"
+request 'Logout tanpa device.' -X POST "$BASE_URL/auth/logout" \
   -H 'Content-Type: application/json' -d "{\"refresh_token\":\"$refresh_token\"}"
 request 'Logout dengan refresh token untuk mencabutnya.' -X POST "$BASE_URL/auth/logout" -H 'X-Device-ID: dev-dosen-01' \
   -H 'Content-Type: application/json' -d "{\"refresh_token\":\"$refresh_token\"}"
@@ -134,6 +146,7 @@ login dosen1 dosen123 dev-dosen-01 dosen1_token
 login dosen2 dosen123 dev-dosen-02 dosen2_token
 login mhs1 mhs123 dev-mhs-01 mhs1_token
 login mhs2 mhs123 dev-mhs-02 mhs2_token
+login mhs3 mhs123 dev-mhs-03 mhs3_token
 login admin admin123 dev-admin-01 admin_token
 
 say '## Skenario 2: gateway secret dan verifikasi JWT ulang di service'
@@ -142,13 +155,28 @@ request 'Token valid dengan device yang salah.' "$BASE_URL/nilai" \
   -H "Authorization: Bearer $mhs1_token" -H 'X-Device-ID: dev-wrong'
 request 'Meminta token service dengan secret yang salah.' -X POST "$BASE_URL/auth/service" \
   -H 'Content-Type: application/json' -d '{"client_id":"service-nilai","client_secret":"secret-salah"}'
+request 'Meminta token service dengan kredensial yang benar.' -X POST "$BASE_URL/auth/service" \
+  -H 'Content-Type: application/json' -d '{"client_id":"service-nilai","client_secret":"secret-service-nilai-999"}'
+service_token=$(sed -n '/^{/,$p' "$RESPONSE_FILE" | jq -r '.service_token')
 request 'Akses langsung ke service tanpa gateway secret.' "$NILAI_URL/nilai"
 request 'Akses service dengan gateway secret tetapi tanpa JWT.' "$NILAI_URL/nilai" \
   -H "X-Gateway-Secret: $GATEWAY_SECRET_VALUE"
+request 'Akses langsung ke Service Transkrip tanpa gateway secret.' "$TRANSKRIP_URL/transkrip/237006001"
+request 'Akses Service Transkrip dengan secret tetapi tanpa JWT.' "$TRANSKRIP_URL/transkrip/237006001" \
+  -H "X-Gateway-Secret: $GATEWAY_SECRET_VALUE"
 
 say '## Skenario 3: kebijakan nilai, kepemilikan kelas, dan jam akses'
+request 'Request dengan JSON rusak.' -X POST "$BASE_URL/auth/service" \
+  -H 'Content-Type: application/json' -d '{json-rusak'
 request 'Mahasiswa meminta daftar nilai.' "$BASE_URL/nilai" -H "Authorization: Bearer $mhs1_token" -H 'X-Device-ID: dev-mhs-01'
+request 'Mahasiswa mencoba mengubah nilai.' -X PUT "$BASE_URL/nilai/1" \
+  -H "Authorization: Bearer $mhs1_token" -H 'X-Device-ID: dev-mhs-01' -H 'X-Simulated-Hour: 10' \
+  -H 'Content-Type: application/json' -d '{"nilai_angka":100,"nilai_huruf":"A"}'
 request 'Dosen meminta daftar nilai kelas.' "$BASE_URL/nilai" -H "Authorization: Bearer $dosen1_token" -H 'X-Device-ID: dev-dosen-01'
+request 'Admin mencoba melihat daftar nilai.' "$BASE_URL/nilai" \
+  -H "Authorization: Bearer $admin_token" -H 'X-Device-ID: dev-admin-01'
+request 'Akses endpoint yang tidak dikenal.' "$BASE_URL/tidak-ada" \
+  -H "Authorization: Bearer $mhs1_token" -H 'X-Device-ID: dev-mhs-01'
 request 'Dosen1 mencoba mengubah nilai kelas dosen2.' -X PUT "$BASE_URL/nilai/3" \
   -H "Authorization: Bearer $dosen1_token" -H 'X-Device-ID: dev-dosen-01' -H 'X-Simulated-Hour: 10' \
   -H 'Content-Type: application/json' -d '{"nilai_angka":90,"nilai_huruf":"A"}'
@@ -158,6 +186,16 @@ request 'Dosen1 mencoba mengubah nilai pada jam simulasi 23.' -X PUT "$BASE_URL/
 request 'Dosen1 mengubah nilai kelasnya pada jam simulasi 10.' -X PUT "$BASE_URL/nilai/1" \
   -H "Authorization: Bearer $dosen1_token" -H 'X-Device-ID: dev-dosen-01' -H 'X-Simulated-Hour: 10' \
   -H 'Content-Type: application/json' -d '{"nilai_angka":90,"nilai_huruf":"A"}'
+request 'Dosen1 mengirim nilai di luar rentang.' -X PUT "$BASE_URL/nilai/1" \
+  -H "Authorization: Bearer $dosen1_token" -H 'X-Device-ID: dev-dosen-01' -H 'X-Simulated-Hour: 10' \
+  -H 'Content-Type: application/json' -d '{"nilai_angka":101,"nilai_huruf":"A"}'
+request 'Dosen1 mengubah data nilai yang tidak ada.' -X PUT "$BASE_URL/nilai/999" \
+  -H "Authorization: Bearer $dosen1_token" -H 'X-Device-ID: dev-dosen-01' -H 'X-Simulated-Hour: 10' \
+  -H 'Content-Type: application/json' -d '{"nilai_angka":90,"nilai_huruf":"A"}'
+request 'Dosen2 mencoba memfinalisasi kelas dosen1.' -X POST "$BASE_URL/kelas/1/finalisasi" \
+  -H "Authorization: Bearer $dosen2_token" -H 'X-Device-ID: dev-dosen-02' -H 'X-Simulated-Hour: 10'
+request 'Mencoba memfinalisasi kelas yang tidak ada.' -X POST "$BASE_URL/kelas/999/finalisasi" \
+  -H "Authorization: Bearer $dosen1_token" -H 'X-Device-ID: dev-dosen-01' -H 'X-Simulated-Hour: 10'
 
 say '## Skenario 4: finalisasi dan sinkronisasi dengan token service'
 request 'Dosen1 mencoba memanggil endpoint sinkronisasi transkrip.' -X POST "$BASE_URL/transkrip/sinkron" \
@@ -165,6 +203,12 @@ request 'Dosen1 mencoba memanggil endpoint sinkronisasi transkrip.' -X POST "$BA
   -H 'Content-Type: application/json' -d '{"kelas_id":1,"records":[]}'
 request 'Dosen1 memfinalisasi kelas; service akan meminta token dan menyinkronkan transkrip melalui gateway.' -X POST "$BASE_URL/kelas/1/finalisasi" \
   -H "Authorization: Bearer $dosen1_token" -H 'X-Device-ID: dev-dosen-01' -H 'X-Simulated-Hour: 10'
+request 'Sinkronisasi service dengan records yang bukan array.' -X POST "$TRANSKRIP_URL/transkrip/sinkron" \
+  -H "X-Gateway-Secret: $GATEWAY_SECRET_VALUE" -H "Authorization: Bearer $service_token" \
+  -H 'Content-Type: application/json' -d '{"kelas_id":1,"records":{}}'
+request 'Sinkronisasi kelas yang belum difinalisasi.' -X POST "$TRANSKRIP_URL/transkrip/sinkron" \
+  -H "X-Gateway-Secret: $GATEWAY_SECRET_VALUE" -H "Authorization: Bearer $service_token" \
+  -H 'Content-Type: application/json' -d '{"kelas_id":2,"records":[]}'
 request 'Dosen1 mencoba mengubah nilai setelah finalisasi.' -X PUT "$BASE_URL/nilai/1" \
   -H "Authorization: Bearer $dosen1_token" -H 'X-Device-ID: dev-dosen-01' -H 'X-Simulated-Hour: 10' \
   -H 'Content-Type: application/json' -d '{"nilai_angka":91,"nilai_huruf":"A"}'

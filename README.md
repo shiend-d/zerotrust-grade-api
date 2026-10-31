@@ -52,7 +52,7 @@ Run the demo from an interactive terminal:
 npm run demo
 ```
 
-The demo covers authentication and device verification, missing and invalid tokens, Gateway checks, grade policies, finalization and transcript synchronization, ownership restrictions, and audit logs. Each step prints the copyable `curl` command, endpoint, actual HTTP status, and response body. The command contains the complete token used by the request; response tokens are truncated only for readability. The audit output contains the 28 most recent entries. Press Enter to run the next step. The results are also saved to `demo-run.md` in the project folder.
+The demo covers authentication and device verification, missing and invalid tokens, Gateway checks, grade policies, finalization and transcript synchronization, ownership restrictions, and audit logs. Each step prints the copyable `curl` command, endpoint, actual HTTP status, and response body. The command contains the complete token used by the request; response tokens are truncated only for readability. The audit output contains up to the 100 most recent entries. Press Enter to run the next step. The results are also saved to `demo-run.md` in the project folder.
 
 To run every step without pausing:
 
@@ -74,6 +74,8 @@ npm run demo -- --auto
 | `mhs3` | `mhs123` | student | `237006003` | `dev-mhs-03` |
 
 Passwords in newly seeded databases are stored with a random salt using `scrypt`. Older SHA-256 seed hashes remain readable for compatibility. The initial data includes `KP70065004` Information Security, taught by dosen1, and `KP70065009` Network Security, taught by dosen2. An existing database is not reset when the servers restart.
+
+All three student accounts are enrolled in both initial classes.
 
 To start again with the initial data, stop the servers and delete the database plus any SQLite companion files:
 
