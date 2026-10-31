@@ -72,6 +72,7 @@ if [[ "$ready" != 1 ]]; then
 fi
 
 request() {
+  local description="$1"
   shift
   local method=GET url endpoint url_parts index status
   local -a curl_args=("$@")
@@ -89,6 +90,7 @@ request() {
   url_parts="${url#*://}"
   endpoint="/${url_parts#*/}"
   say "Langkah $STEP: $method $endpoint"
+  say "Catatan: $description"
   say "Command: $(curl_command "$@")"
   if [[ "$INTERACTIVE" == 1 ]]; then
     read -r _ </dev/tty

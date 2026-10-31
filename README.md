@@ -8,7 +8,7 @@ A local API for academic grade and transcript management based on a Zero Trust m
 - **Policy Engine** in `policy.js` checks roles, class or transcript ownership, finalization status, and access hours.
 - **Grade Service** handles grade retrieval, grade changes, and class finalization.
 - **Transcript Service** handles transcript retrieval and synchronization.
-- **SQLite** stores accounts, classes, grades, refresh tokens, transcripts, and audit logs in `kampus.db`.
+- **SQLite** stores accounts, classes, grades, refresh tokens, transcripts, and audit logs in a local database.
 
 Application requests are sent through the Gateway on port `3000`. The Grade Service and Transcript Service run on ports `3001` and `3002`; both reject direct access without a valid gateway secret and JWT.
 
@@ -32,7 +32,7 @@ All three servers will start together. Check the Gateway with:
 curl -i http://localhost:3000/health
 ```
 
-The database is created and seeded automatically. Press `Ctrl+C` to stop all servers.
+When started with `npm start`, a local SQLite database is created and seeded automatically. Press `Ctrl+C` to stop all servers.
 
 ### Run with Nix
 
@@ -52,7 +52,7 @@ Run the demo from an interactive terminal:
 npm run demo
 ```
 
-The demo covers authentication and device verification, missing and invalid tokens, Gateway checks, grade policies, finalization and transcript synchronization, ownership restrictions, and audit logs. Each step prints the copyable `curl` command, endpoint, actual HTTP status, and response body. The command contains the complete token used by the request; response tokens are truncated only for readability. The audit output contains up to the 100 most recent entries. Press Enter to run the next step. The results are also saved to `demo-run.md` in the project folder.
+The demo covers authentication and device verification, missing and invalid tokens, Gateway checks, grade policies, finalization and transcript synchronization, ownership restrictions, and audit logs. Each step prints a short explanation, the copyable `curl` command, endpoint, actual HTTP status, and response body. The command contains the complete token used by the request; response tokens are truncated only for readability. The audit output contains up to the 100 most recent entries. Press Enter to run the next step. The results are also saved to `demo-run.md` in the project folder.
 
 To run every step without pausing:
 
@@ -60,7 +60,9 @@ To run every step without pausing:
 npm run demo -- --auto
 ```
 
-`demo.sh` requires the normal servers to be stopped first. It always starts all three services with `DEMO_MODE=1` and a temporary database, then removes the database and stops the services after the demo. The `X-Simulated-Hour` header is accepted only in this temporary demo mode; normal requests always use the server's real clock.
+`demo.sh` requires the normal servers to be stopped first. It always starts all three services with `DEMO_MODE=1` and a temporary SQLite file, then removes that file and stops the services after the demo. Therefore, `npm run demo` does not leave a persistent database behind. The `X-Simulated-Hour` header is accepted only in this temporary demo mode; normal requests always use the server's real clock.
+
+`npm run demo` and `./demo.sh` run the same script. The npm command invokes `bash demo.sh` and does not depend on the file's executable permission. Direct execution requires Bash and an executable file. On Windows, run the demo from Git Bash or WSL because the script uses Bash and Unix utilities such as `jq`, `mktemp`, and process control; PowerShell or Command Prompt alone is not supported.
 
 ## Seed accounts and data
 
@@ -73,16 +75,9 @@ npm run demo -- --auto
 | `mhs2` | `mhs123` | student | `237006002` | `dev-mhs-02` |
 | `mhs3` | `mhs123` | student | `237006003` | `dev-mhs-03` |
 
-Passwords in newly seeded databases are stored with a random salt using `scrypt`. Older SHA-256 seed hashes remain readable for compatibility. The initial data includes `KP70065004` Information Security, taught by dosen1, and `KP70065009` Network Security, taught by dosen2. An existing database is not reset when the servers restart.
+Passwords in newly seeded databases are stored with a random salt using `scrypt`. Older SHA-256 seed hashes remain readable for compatibility. The initial data includes `KP70065004` Information Security, taught by dosen1, and `KP70065009` Network Security, taught by dosen2. An existing database is not reset when the servers restart. The demo uses the same seed data in its temporary database.
 
 All three student accounts are enrolled in both initial classes.
-
-To start again with the initial data, stop the servers and delete the database plus any SQLite companion files:
-
-```bash
-rm -f kampus.db kampus.db-wal kampus.db-shm
-npm start
-```
 
 ## API
 
@@ -113,7 +108,7 @@ Configuration is read from environment variables when the processes start.
 | `GATEWAY_PORT` | `3000` | API Gateway port |
 | `NILAI_PORT` | `3001` | Grade Service port |
 | `TRANSKRIP_PORT` | `3002` | Transcript Service port |
-| `DATABASE_PATH` | `kampus.db` in the project folder | SQLite database location |
+| `DATABASE_PATH` | local SQLite file | SQLite database location for manual server mode |
 | `JWT_SECRET` | demo value in `config.js` | Token signing key |
 | `GATEWAY_SECRET` | demo value in `config.js` | Internal secret between the Gateway and services |
 | `SERVICE_CLIENT_ID` | `service-nilai` | Internal service identity |
