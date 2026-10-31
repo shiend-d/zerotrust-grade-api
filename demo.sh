@@ -27,9 +27,18 @@ say() {
   printf '%s\n' "$*" | tee -a "$DEMO_LOG"
 }
 
+curl_command() {
+  local arg escaped
+  printf 'curl -sS'
+  for arg in "$@"; do
+    escaped=${arg//\'/\'\\\'\'}
+    printf " '%s'" "$escaped"
+  done
+}
+
 say '# Demo Zero Trust Sistem Nilai'
 say "Waktu: $(date --iso-8601=seconds)"
-say 'Token ditampilkan sesuai response API.'
+say 'Token dipotong di tampilan; request tetap memakai token lengkap.'
 
 cleanup() {
   if [[ -n "$SERVER_PID" ]]; then
@@ -41,21 +50,24 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-if ! curl -fsS "$BASE_URL/health" >/dev/null 2>&1; then
-  say 'Memulai tiga service dengan database sementara...'
-  DEMO_DB_FILE="$(mktemp)"
-  DATABASE_PATH="$DEMO_DB_FILE" node start-all.js >"$LOG_FILE" 2>&1 &
-  SERVER_PID=$!
-  ready=0
-  for _ in $(seq 1 50); do
-    if curl -fsS "$BASE_URL/health" >/dev/null 2>&1; then ready=1; break; fi
-    sleep 0.2
-  done
-  if [[ "$ready" != 1 ]]; then
-    cat "$LOG_FILE"
-    echo "Gateway did not become ready" >&2
-    exit 1
-  fi
+if curl -fsS "$BASE_URL/health" >/dev/null 2>&1; then
+  say "Gateway sudah berjalan di $BASE_URL. Hentikan server lama lalu jalankan demo kembali."
+  exit 1
+fi
+
+say 'Memulai tiga service dengan database sementara...'
+DEMO_DB_FILE="$(mktemp)"
+DEMO_MODE=1 DATABASE_PATH="$DEMO_DB_FILE" node start-all.js >"$LOG_FILE" 2>&1 &
+SERVER_PID=$!
+ready=0
+for _ in $(seq 1 50); do
+  if curl -fsS "$BASE_URL/health" >/dev/null 2>&1; then ready=1; break; fi
+  sleep 0.2
+done
+if [[ "$ready" != 1 ]]; then
+  cat "$LOG_FILE"
+  echo "Gateway did not become ready" >&2
+  exit 1
 fi
 
 request() {
@@ -76,14 +88,22 @@ request() {
   url_parts="${url#*://}"
   endpoint="/${url_parts#*/}"
   say "Langkah $STEP: $method $endpoint"
+  say "Command: $(curl_command "$@")"
   if [[ "$INTERACTIVE" == 1 ]]; then
-    say 'Tekan Enter untuk menjalankan request ini.'
     read -r _ </dev/tty
   fi
   status=$(curl -sS -o "$RESPONSE_FILE" -w '%{http_code}' "$@")
   say "[$status] $method $endpoint"
-  printf '%s\n' '```json' >> "$DEMO_LOG"
-  jq . "$RESPONSE_FILE" | tee -a "$DEMO_LOG"
+  if [[ "$endpoint" == "/audit-logs" ]]; then
+    printf '%s\n' '```text' >> "$DEMO_LOG"
+    printf 'id\tsubjek\tendpoint\thasil\talasan\n' | tee -a "$DEMO_LOG"
+    jq -r '.logs[-28:][] | [.id, .subjek, .endpoint, .hasil, .alasan] | @tsv' "$RESPONSE_FILE" | tee -a "$DEMO_LOG"
+  else
+    printf '%s\n' '```json' >> "$DEMO_LOG"
+    jq 'if .access_token then .access_token = (.access_token[0:25] + "...") else . end
+      | if .refresh_token then .refresh_token = (.refresh_token[0:25] + "...") else . end
+      | if .service_token then .service_token = (.service_token[0:25] + "...") else . end' "$RESPONSE_FILE" | tee -a "$DEMO_LOG"
+  fi
   printf '%s\n' '```' >> "$DEMO_LOG"
 }
 
@@ -117,6 +137,11 @@ login mhs2 mhs123 dev-mhs-02 mhs2_token
 login admin admin123 dev-admin-01 admin_token
 
 say '## Skenario 2: gateway secret dan verifikasi JWT ulang di service'
+request 'Request ke Gateway tanpa token.' "$BASE_URL/nilai"
+request 'Token valid dengan device yang salah.' "$BASE_URL/nilai" \
+  -H "Authorization: Bearer $mhs1_token" -H 'X-Device-ID: dev-wrong'
+request 'Meminta token service dengan secret yang salah.' -X POST "$BASE_URL/auth/service" \
+  -H 'Content-Type: application/json' -d '{"client_id":"service-nilai","client_secret":"secret-salah"}'
 request 'Akses langsung ke service tanpa gateway secret.' "$NILAI_URL/nilai"
 request 'Akses service dengan gateway secret tetapi tanpa JWT.' "$NILAI_URL/nilai" \
   -H "X-Gateway-Secret: $GATEWAY_SECRET_VALUE"

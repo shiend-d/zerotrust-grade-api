@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { config } from './config.js';
 
 export const db = new DatabaseSync(config.databasePath);
@@ -43,13 +43,20 @@ if (process.env.ZERO_TRUST_DB_READY !== '1') {
 }
 
 export function hashPassword(password) {
-  return createHash('sha256').update(password).digest('hex');
+  const salt = randomBytes(16).toString('hex');
+  const digest = scryptSync(password, salt, 64).toString('hex');
+  return `scrypt$${salt}$${digest}`;
 }
 
 export function passwordMatches(password, storedHash) {
-  const actual = Buffer.from(hashPassword(password), 'hex');
-  const expected = Buffer.from(storedHash, 'hex');
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
+  const parts = String(storedHash).split('$');
+  if (parts.length === 3 && parts[0] === 'scrypt') {
+    const actual = scryptSync(password, parts[1], 64);
+    const expected = Buffer.from(parts[2], 'hex');
+    return actual.length === expected.length && timingSafeEqual(actual, expected);
+  }
+  const actual = createHash('sha256').update(password).digest('hex');
+  return actual.length === String(storedHash).length && timingSafeEqual(Buffer.from(actual), Buffer.from(String(storedHash)));
 }
 
 export function seedDatabase() {

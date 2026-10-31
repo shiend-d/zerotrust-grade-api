@@ -84,4 +84,4 @@ app.post('/kelas/:id/finalisasi', async (req, res) => {
 });
 
 app.use((_req, res) => res.status(404).json({ error: 'Endpoint Service Nilai tidak ditemukan' }));
-app.listen(config.nilaiPort, '0.0.0.0', () => console.log(`Service Nilai berjalan di port ${config.nilaiPort}`));
+app.listen(config.nilaiPort, '127.0.0.1', () => console.log(`Service Nilai berjalan di port ${config.nilaiPort}`));

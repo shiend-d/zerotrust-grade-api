@@ -6,7 +6,9 @@ const denied = (status, reason, extra = {}) => ({ allow: false, status, reason, 
 
 function currentHour(req) {
   const simulated = req.get('X-Simulated-Hour');
-  if (simulated !== undefined && /^\d{1,2}$/.test(simulated) && Number(simulated) <= 23) return Number(simulated);
+  if (config.demoMode && simulated !== undefined && /^\d{1,2}$/.test(simulated) && Number(simulated) <= 23) {
+    return Number(simulated);
+  }
   return new Date().getHours();
 }
 

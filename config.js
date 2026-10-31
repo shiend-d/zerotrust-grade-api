@@ -8,6 +8,7 @@ export const config = Object.freeze({
   serviceClientSecret: process.env.SERVICE_CLIENT_SECRET ?? 'secret-service-nilai-999',
   accessStartHour: Number(process.env.ACCESS_START_HOUR ?? 7),
   accessEndHour: Number(process.env.ACCESS_END_HOUR ?? 21),
+  demoMode: process.env.DEMO_MODE === '1',
   databasePath: process.env.DATABASE_PATH ?? new URL('./kampus.db', import.meta.url).pathname,
 });
 

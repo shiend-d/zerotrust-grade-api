@@ -62,7 +62,7 @@ app.post('/auth/logout', (req, res) => {
     return res.status(401).json({ status: 'DENY', reason: 'Refresh token tidak ditemukan atau sudah dicabut' });
   }
   const deviceId = req.get('X-Device-ID');
-  if (deviceId && deviceId !== row.device_id) {
+  if (!deviceId || deviceId !== row.device_id) {
     authAudit(req, 'DENY', 'Device ID tidak cocok dengan pemilik refresh token', row.username, row.role);
     return res.status(403).json({ status: 'DENY', reason: 'Device ID tidak cocok dengan pemilik refresh token' });
   }
@@ -117,4 +117,4 @@ app.use((error, _req, res, _next) => {
   return res.status(400).json({ error: 'Body JSON tidak valid' });
 });
 
-app.listen(config.gatewayPort, '0.0.0.0', () => console.log(`API Gateway berjalan di port ${config.gatewayPort}`));
+app.listen(config.gatewayPort, '127.0.0.1', () => console.log(`API Gateway berjalan di port ${config.gatewayPort}`));

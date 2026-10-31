@@ -52,7 +52,7 @@ Run the demo from an interactive terminal:
 npm run demo
 ```
 
-The demo covers authentication and device verification, Gateway checks, grade policies, finalization and transcript synchronization, ownership restrictions, and audit logs. Each step prints the endpoint, actual HTTP status, and response body. Press Enter to run the next step. The results are also saved to `demo-run.md` in the project folder.
+The demo covers authentication and device verification, missing and invalid tokens, Gateway checks, grade policies, finalization and transcript synchronization, ownership restrictions, and audit logs. Each step prints the copyable `curl` command, endpoint, actual HTTP status, and response body. The command contains the complete token used by the request; response tokens are truncated only for readability. The audit output contains the 28 most recent entries. Press Enter to run the next step. The results are also saved to `demo-run.md` in the project folder.
 
 To run every step without pausing:
 
@@ -60,7 +60,7 @@ To run every step without pausing:
 npm run demo -- --auto
 ```
 
-If the Gateway is not running, `demo.sh` starts the servers with a temporary database and stops them after the demo. If the Gateway is already running, the demo uses the existing server and database; the finalization scenario can modify data in that database.
+`demo.sh` requires the normal servers to be stopped first. It always starts all three services with `DEMO_MODE=1` and a temporary database, then removes the database and stops the services after the demo. The `X-Simulated-Hour` header is accepted only in this temporary demo mode; normal requests always use the server's real clock.
 
 ## Seed accounts and data
 
@@ -73,7 +73,7 @@ If the Gateway is not running, `demo.sh` starts the servers with a temporary dat
 | `mhs2` | `mhs123` | student | `237006002` | `dev-mhs-02` |
 | `mhs3` | `mhs123` | student | `237006003` | `dev-mhs-03` |
 
-Passwords are stored as SHA-256 hashes. The initial data includes `KP70065004` Information Security, taught by dosen1, and `KP70065009` Network Security, taught by dosen2. An existing database is not reset when the servers restart.
+Passwords in newly seeded databases are stored with a random salt using `scrypt`. Older SHA-256 seed hashes remain readable for compatibility. The initial data includes `KP70065004` Information Security, taught by dosen1, and `KP70065009` Network Security, taught by dosen2. An existing database is not reset when the servers restart.
 
 To start again with the initial data, stop the servers and delete the database plus any SQLite companion files:
 
@@ -118,6 +118,7 @@ Configuration is read from environment variables when the processes start.
 | `SERVICE_CLIENT_SECRET` | demo value in `config.js` | Credential for requesting a service token |
 | `ACCESS_START_HOUR` | `7` | Start of the access window, 24-hour format |
 | `ACCESS_END_HOUR` | `21` | End of the access window, exclusive |
+| `DEMO_MODE` | `false` | Enables `X-Simulated-Hour` for the isolated demo process only |
 
 > The default secrets and seed accounts are for local demonstration only. Set your own secrets before using this project in another environment.
 
